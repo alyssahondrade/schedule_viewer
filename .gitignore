@@ -1,4 +1,5 @@
 schedule_viewer/
+.ipynb_checkpoints/
 
 # OS junk
 .DS_Store
