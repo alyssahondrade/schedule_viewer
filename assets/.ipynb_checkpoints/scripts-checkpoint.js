@@ -10,36 +10,32 @@ function handle_file(e) {
         const workbook = XLSX.read(data, { type: 'array' });
 
         // Always use the first sheet
-        const sheet = workbook.Sheets[
-            workbook.SheetNames[0]
-        ];
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
         const json = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
         const headers = json[0];
         const task_name_idx = headers.indexOf("Task Name");
-        const start_idx = headers.indexOf("Start");
-        const finish_idx = headers.indexOf("Finish");
-        const duration_idx = headers.indexOf("Duration");
-
         if (task_name_idx === -1) {
             alert("No 'Task Name' column found!");
             return;
         }
 
-        const tasks = json.slice(1).map(row => ({
-            name: row[task_name_idx],
-            start: start_idx !== -1 ? row[start_idx] : "",
-            finish: finish_idx !== -1 ? row[finish_idx] : "",
-            duration: duration_idx !== -1 ? row[duration_idx] : "",
-            level: Math.floor(
+        // Map each row into an object with dynamic properties
+        const tasks = json.slice(1).map(row => {
+            const obj = {};
+            headers.forEach((header, i) => {
+                obj[header] = row[i] || "";
+            });
+            obj.level = Math.floor(
                 (row[task_name_idx].match(/^(\s*)/)[0].length) / 3
-            ) + 1
-        }));
+            ) + 1;
+            return obj;
+        });
 
-        const tree = build_tree(tasks);
+        const tree = build_tree(tasks, "Task Name");
         const tbody = document.querySelector('#scheduleContainer tbody');
         tbody.innerHTML = '';
-        generate_table_rows(tree, tbody);
+        generate_table_rows(tree, tbody, headers, '');
         add_toggle_listeners();
     };
 
@@ -47,21 +43,18 @@ function handle_file(e) {
 }
 
 // Build tree from flat list
-function build_tree(tasks) {
+function build_tree(tasks, task_key) {
     const tree = [];
     const stack = [];
 
     tasks.forEach(task => {
         const node = {
-            name: task.name.trim(),
-            start: task.start,
-            finish: task.finish,
-            duration: task.duration,
+            name: task[task_key].trim(),
             children: [],
-            level: task.level
+            ...task  // keep all dynamic properties
         };
 
-        while (stack.length && stack[stack.length - 1].level >= task.level) {
+        while (stack.length && stack[stack.length - 1].level >= node.level) {
             stack.pop();
         }
 
@@ -77,8 +70,8 @@ function build_tree(tasks) {
     return tree;
 }
 
-// Generate table rows recursively
-function generate_table_rows(nodes, tbody, parent_id='') {
+// Generate table rows recursively, dynamically for all columns
+function generate_table_rows(nodes, tbody, headers, parent_id='') {
     nodes.forEach((node, index) => {
         const row_id = parent_id ? `${parent_id}-${index}` : `${index}`;
         const tr = document.createElement('tr');
@@ -90,28 +83,24 @@ function generate_table_rows(nodes, tbody, parent_id='') {
         const td_name = document.createElement('td');
         td_name.style.paddingLeft = `${(node.level - 1) * 20}px`;
         td_name.innerHTML = node.children.length > 0
-            ? `<span class="caret">${node.name}</span>`
-            : node.name;
+            ? `<span class="caret">${node["Task Name"]}</span>`
+            : node["Task Name"];
         tr.appendChild(td_name);
 
-        // Other columns
-        const td_start = document.createElement('td');
-        td_start.textContent = node.start;
-        tr.appendChild(td_start);
-
-        const td_finish = document.createElement('td');
-        td_finish.textContent = node.finish;
-        tr.appendChild(td_finish);
-
-        const td_duration = document.createElement('td');
-        td_duration.textContent = node.duration;
-        tr.appendChild(td_duration);
+        // Add all other columns dynamically
+        headers.forEach(header => {
+            if (header !== "Task Name") {
+                const td = document.createElement('td');
+                td.textContent = node[header];
+                tr.appendChild(td);
+            }
+        });
 
         tbody.appendChild(tr);
 
         // Recursively add children rows
         if (node.children.length > 0) {
-            generate_table_rows(node.children, tbody, row_id);
+            generate_table_rows(node.children, tbody, headers, row_id);
             node.children.forEach((_, child_index) => {
                 const child_row = tbody.querySelector(
                     `tr[data-id='${row_id}-${child_index}']`
